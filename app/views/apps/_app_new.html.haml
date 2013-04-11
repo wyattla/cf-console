@@ -1,5 +1,5 @@
 .modalBox{:id => "create_application_modalBox"}
-  = form_tag apps_create_url, :id => "new-app-form", :remote => true do
+  = form_tag apps_create_url, :id => "new-app-form", :remote => true, :enctype =>"multipart/form-data" do
     .modalBox-title=t('apps.add_app')
     .modalBox-flash
     .modalBox-content
@@ -54,30 +54,50 @@
             %td
               = select_tag :service, options_for_select(@available_services), :class => "service-chosen", :style => "width: 300px;"
               .form-field-error
-          - if git_deploy_available?
-            %tr
-              %td
-                = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.deploy_from_help_html'))
-                = label_tag "deployfrom", t('apps.deploy_from') + ":"
-              %td
-                = radio_button_tag :deployfrom, 'git', true, :disabled => true
-                = t('apps.git')
-            %tr
-              %td
-                = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.git_repo_help_html'))
-                = label_tag "gitrepo", t('apps.git_repo') + ":"
-              %td
-                = text_field_tag :gitrepo, @gitrepo, :size => 50, :placeholder => t('apps.git_repo_placeholder'),
-                  :pattern => "(git://[a-z0-9]+([-.]{1}[a-z0-9]+)*.[a-z]{2,5}(([0-9]{1,5})?.*)?.git)?",
-                  :title => t('apps.git_repo_title_html')
-                .form-field-error
-            %tr
-              %td
-                = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.git_branch_help_html'))
-                = label_tag "gitrepo", t('apps.git_branch') + ":"
-              %td
-                = text_field_tag :gitbranch, @gitbranch, :size => 20, :placeholder => t('apps.git_branch_placeholder')
-                .form-field-error
+        - if git_deploy_available?
+          %tr
+            %td
+              = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.deploy_from_help_html'))
+              = label_tag "deployfrom", t('apps.deploy_from') + ":"
+            %td
+              = radio_button_tag :deployfrom, 'local', true, :disabled => false, :onclick => "selectDeployWay(this.value)"
+              = t('apps.local')
+              = radio_button_tag :deployfrom, 'git', false, :disabled => false, :onclick => "selectDeployWay(this.value)"
+              = t('apps.git')
+              = radio_button_tag :deployfrom, 'http', false, :disabled => false, :onclick => "selectDeployWay(this.value)"
+              = t('apps.http')
+          %tr.gitdeploy{:style => "display:none"}
+            %td
+              = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.git_repo_help_html'))
+              = label_tag "gitrepo", t('apps.git_repo') + ":"
+            %td
+              = text_field_tag :gitrepo, @gitrepo, :size => 45, :placeholder => t('apps.git_repo_placeholder'),
+                :pattern => "(git://[a-z0-9]+([-.]{1}[a-z0-9]+)*.[a-z]{2,5}(([0-9]{1,5})?.*)?.git)?",
+                :title => t('apps.git_repo_title_html')
+              .form-field-error
+          %tr.gitdeploy{:style => "display:none"}
+            %td
+              = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.git_branch_help_html'))
+              = label_tag "gitrepo", t('apps.git_branch') + ":"
+            %td
+              = text_field_tag :gitbranch, @gitbranch, :size => 45, :placeholder => t('apps.git_branch_placeholder')
+              .form-field-error
+          %tr.localdeploy
+            %td
+              = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.local_dep_help_html'))
+              = label_tag "local_dep", t('apps.local') + ":"
+            %td
+              = file_field("file", "file", :size => 45)
+              /= text_field_tag :localdeploy, @localdeploy, :type => "file", :size => 45, :placeholder => t('apps.local_dep_placeholder')
+              .form-field-error
+          %tr.httpdeploy{:style => "display:none"}
+            %td
+              = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.http_repo_help_html'))
+              = label_tag "http_repo", t('apps.http') + ":"
+            %td
+              = text_field_tag :httplocation, @httplocation, :size => 45, :placeholder => t('apps.http_repo_placeholder'),
+                :title => t('apps.http_repo_title_html')
+              .form-field-error
     .modalBox-submit= submit_tag t('apps.add_app')
 
 - if @newapp_default_urldomain
@@ -92,3 +112,23 @@
             }
           });
       });
+      
+  - content_for :javascripts do
+    :javascript
+      function selectDeployWay(value) {
+       if(value=="git") {
+          $('#new-app-form tr.localdeploy').hide();
+          $('#new-app-form tr.httpdeploy').hide();
+          $('#new-app-form tr.gitdeploy').show();
+         } 
+       else if(value=="local") {
+          $('#new-app-form tr.gitdeploy').hide();
+          $('#new-app-form tr.httpdeploy').hide();
+          $('#new-app-form tr.localdeploy').show();
+         }  
+       else {
+          $('#new-app-form tr.gitdeploy').hide();
+          $('#new-app-form tr.httpdeploy').show();
+          $('#new-app-form tr.localdeploy').hide();
+         }
+        } 

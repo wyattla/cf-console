@@ -150,4 +150,134 @@ module Utils
       end
     end
   end
+  
+  module CFCTAR
+    require 'zlib'
+    require 'fileutils'
+    require 'rubygems/package'
+    
+      def self.ungzip(tarfile)
+        z = Zlib::GzipReader.open(tarfile)
+        unzipped = StringIO.new(z.read)
+        z.close
+        unzipped
+      end
+
+      def self.untar(io, destination)
+        Gem::Package::TarReader.new io do |tar|
+          tar.each do |tarfile|
+            destination_file = File.join destination, tarfile.full_name
+            if tarfile.directory?
+              FileUtils.mkdir_p destination_file
+            else
+                destination_directory = File.dirname(destination_file)
+                FileUtils.mkdir_p destination_directory unless File.directory?(destination_directory)
+                File.open destination_file, "wb" do |f|
+                  f.print tarfile.read
+                end
+             end
+          end
+       end
+      end
+       
+       def self.extract(tarfile, exploded_dir)    
+         extract_proc = Proc.new {
+         unzippedtar = ungzip(tarfile)
+         untar(unzippedtar, exploded_dir)
+         }
+          if EM.reactor_running?
+            EMDeferredBlock::defer_block(&extract_proc)
+          else
+            extract_proc.call
+          end
+       end
+    
+  end
+
+  module FileUtilsAsync
+    
+    def self.rm_rf(dest_dir)
+      rm_rf_async = Proc.new {    
+      FileUtils.rm_rf(dest_dir)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&rm_rf_async)
+      else
+          rm_fr_async.call  
+      end    
+    end
+    
+    def self.rm_f(dest_dir)
+      rm_f_async = Proc.new {    
+      FileUtils.rm_f(dest_dir)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&rm_f_async)
+      else
+          rm_f_async.call  
+      end    
+    end
+    
+    def self.cp_r(source, target)
+      cp_r_async = Proc.new {
+        FileUtils.cp_r(source, target)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&cp_r_async)
+      else
+          cp_r_async.call  
+      end 
+    end
+    
+    def self.cp(source, target)
+      cp_async = Proc.new {
+        FileUtils.cp(source, target)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&cp_async)
+      else
+          cp_async.call  
+      end 
+    end
+    
+    def self.mkdir(dir)
+      mkdir_async = Proc.new {
+        FileUtils.mkdir(dir)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&mkdir_async)
+      else
+          mkdir_async.call  
+      end 
+    end   
+    
+    def self.new(filename, mode)
+      new_async = Proc.new {
+        File.new(filename, mode)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&new_async)
+      else
+        new_async.call  
+      end 
+    end 
+    
+  end  
+  
+  module DirAsync
+    
+    def self.glob(pattern, filename)
+      dir_glob = Proc.new {
+      Dir.glob(pattern, filename)
+      }
+      if EM.reactor_running?
+        EMDeferredBlock::defer_block(&dir_glob)
+      else
+        dir_glob.call  
+      end 
+    end
+    
+  end
+        
+
 end

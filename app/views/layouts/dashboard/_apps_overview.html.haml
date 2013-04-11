@@ -1,0 +1,28 @@
+.item
+  %table
+    %tbody
+      %tr.pieCharts
+        %td.tdptop
+          .apps_states
+        %td.tdptop
+          .instances_states
+        %td.tdptop
+          .apps_types
+      %tr
+        %td.tdptop
+          =t('dashboard.apps.apps_states')
+          .apps_states_hover
+        %td.tdptop
+          =t('dashboard.apps.instances_states')
+          .instances_states_hover
+        %td.tdptop
+          =t('dashboard.apps.apps_types')
+          .apps_types_hover
+
+- content_for :javascripts do
+  :javascript
+    $(function() {
+      apps_states = #{@apps_states};
+      instances_states = #{@instances_states};
+      apps_types = #{@apps_types};
+    });

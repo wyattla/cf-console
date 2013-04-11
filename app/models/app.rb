@@ -123,6 +123,7 @@ class App
     }
     manifest[:services] = [service] unless service.blank?
     @cf_client.create_app(name, manifest)
+    return manifest
   end
 
   def start(name)
@@ -309,6 +310,10 @@ class App
     raise I18n.t('apps.model.name_blank') if name.blank?
     raise I18n.t('apps.model.zipfile_blank') if zipfile.blank?
     @cf_client.upload_app(name, zipfile, resource_manifest)
+  end
+  
+  def upload_app_async(appname, upload_file)
+    @cf_client.upload_app(appname, upload_file,[]) 
   end
 
   def upload_app_from_git(name, gitrepo, gitbranch)

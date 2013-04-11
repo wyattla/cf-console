@@ -1,5 +1,3 @@
-require 'utils'
-
 class AppsController < ApplicationController
   def index
     begin
@@ -35,6 +33,8 @@ class AppsController < ApplicationController
     @deployform = params[:deployform]
     @gitrepo = params[:gitrepo]
     @gitbranch = params[:gitbranch]
+    localdeploy = params[:file]['file']
+    httplocation = params[:httplocation]
     app_created = false
     if @name.blank?
       flash[:alert] = I18n.t('apps.controller.name_blank')
@@ -50,17 +50,48 @@ class AppsController < ApplicationController
       begin
         @name = @name.strip.downcase
         framework, runtime = @type.split("/")
+        file_path = nil
+        filetype = nil
+        unless !localdeploy
+          unless request.get?
+            if file_path = uploadfile(localdeploy)
+               #detect_framework(file_path, framework)
+            end
+          end
+        end 
+        unless !httplocation
+          unless request.get?
+            file_path, filetype = downloadfile(@httplocation)   
+          end
+        end
         @url = @url.strip.gsub(/^http(s*):\/\//i, '').downcase
         app = App.new(@cf_client)
-        app.create(@name, @instances, @memsize, @url, framework, runtime, @service)
-        @new_app = [] << app.find(@name)
+        manifestarray = app.create(@name, @instances, @memsize, @url, framework, runtime, @service)
+         #upload application file to cloudfoundry and create app in there
+        upload_app_bits2cf(@name, file_path, manifestarray) 
+        logger.info "checking app created"
+        #@new_app = [] << app.find(@name)
         flash[:notice] = I18n.t('apps.controller.app_created', :name => @name)
         app_created = true
       rescue Exception => ex
         flash[:alert] = ex.message
+      ensure
+        # Cleanup if we created file and directory.
+        logger.info "starting cleanup"
+        if file_path
+          if file_path.to_s =~ /\.zip$/
+            dir = File.dirname(file_path.to_s)
+            filename = File.basename(file_path.to_s, ".zip")
+            dest_dir = dir + "/" + filename
+            Utils::FileUtilsAsync.rm_rf(dest_dir)
+            logger.info "Cleaned up"
+          end
+          Utils::FileUtilsAsync.rm_f(file_path)
+          logger.info "Cleaned up"
+        end 
       end
     end
-    if app_created
+    if !app_created
       unless @gitrepo.blank?
         @gitrepo = @gitrepo.strip
         if Utils::GitUtil.git_uri_valid?(@gitrepo)
@@ -77,6 +108,7 @@ class AppsController < ApplicationController
         end
       end
     end
+    logger.info "end"
     respond_to do |format|
       format.html { redirect_to apps_info_url }
       format.js { flash.discard }
@@ -113,13 +145,13 @@ class AppsController < ApplicationController
     end
   end
 
-  def start
-    @name = params[:name]
+  def start(appname = nil)
+    @name = appname || params[:name]
     if @name.blank?
       flash[:alert] = I18n.t('apps.controller.name_blank')
     else
       begin
-        @name = @name.strip
+        @name = @name.strip 
         app = App.new(@cf_client)
         @updated_app = [] << app.start(@name)
         @updated_app.collect! { |app_info| app.find(@name)}
@@ -678,4 +710,272 @@ class AppsController < ApplicationController
     end
     false
   end
+##handle apps deployment
+  def detect_framework(path, selected_framework)
+    if !File.directory? path
+      if path.to_s.end_with?('.war')
+        detect_framework_from_war path, selected_framework
+      elsif path.to_s.end_with?('.zip')
+        detect_framework_from_zip path, selected_framework
+      elsif selected_framework == "standalone"
+        return true
+      else
+        return nil
+      end
+    end
+  end
+
+  def detect_framework_from_war(war_file=nil, framework)
+    if war_file
+      contents = ZipUtil.entry_lines(war_file)
+    else
+    #assume we are working with current dir
+      contents = Dir['**/*'].join("\n")
+    end
+
+    # Spring/Lift Variations
+    # Grails
+    if contents =~ /WEB-INF\/lib\/grails-web.*\.jar/ && framework != "grails"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "grails")
+    # Lift
+    elsif contents =~ /WEB-INF\/lib\/lift-webkit.*\.jar/ && framework != "lift"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "lift")
+    # Spring
+    elsif contents =~ /WEB-INF\/classes\/org\/springframework/ && framework != "spring"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "spring")
+    # Spring
+    elsif contents =~ /WEB-INF\/lib\/spring-core.*\.jar/ && framework != "spring"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "spring")
+    # Spring
+    elsif contents =~ /WEB-INF\/lib\/org\.springframework\.core.*\.jar/ && framework != "spring" 
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "spring")
+    # JavaWeb
+    else
+      if framework != "java_web" || framework != "java_web_tongweb"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "java_web")
+      end
+    end
+  end
+
+  def detect_framework_from_zip(zip_file, framework)
+    contents = ZipUtil.entry_lines(zip_file)
+    detect_framework_from_zip_contents(contents, zip_file, framework)
+  end
+
+  def detect_framework_from_zip_contents(contents, zip_file, framework)
+    if contents =~ /lib\/play\..*\.jar/ && framework != "play"
+        raise I18n.t('apps.controller.app_framework_detect', :frame_type => "play")
+    elsif framework == "standalone"
+      return true
+    else
+    #unpack zip and detect the framework
+      if zip_file
+        dir = File.dirname(zip_file.to_s)
+        filename = File.basename(zip_file.to_s, ".zip")
+        dest_dir = dir + "/" + filename
+        ZipUtil.unpack(zip_file, dest_dir)
+        if File.directory? dest_dir
+          Dir.chdir(dest_dir) do
+          # Rails
+            if File.exist?('config/environment.rb') && framework != "rails3"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "rails3")
+
+            # Rack
+            elsif File.exist?('config.ru') && framework != "rack"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "rack")
+
+            # Java Web Apps
+            elsif File.exist?('WEB-INF/web.xml')
+              return detect_framework_from_war(nil, framework)
+
+            # Simple Ruby Apps
+            elsif !Dir.glob('*.rb').empty?
+              matched_file = nil
+              Dir.glob('*.rb').each do |fname|
+                next if matched_file
+                File.open(fname, 'r') do |f|
+                  str = f.read # This might want to be limited
+                  matched_file = fname if (str && str.match(/^\s*require[\s\(]*['"]sinatra['"]/))
+                end
+              end
+              if matched_file
+                # Sinatra apps
+                if framework != "sinatra"
+                  raise I18n.t('apps.controller.app_framework_detect', :frame_type => "sinatra")
+                end
+                return {:exec => "ruby #{matched_file}"}
+              end
+
+            # PHP
+            elsif !Dir.glob('*.php').empty? && framework != "php"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "php")
+
+            # Erlang/OTP using Rebar
+            elsif !Dir.glob('releases/*/*.rel').empty? && !Dir.glob('releases/*/*.boot').empty? && framework != "otp_rebar"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "otp_rebar")
+
+            # Python Django
+            # XXX: not all django projects keep settings.py in top-level directory
+            elsif File.exist?('manage.py') && File.exist?('settings.py') && framework != "django"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "django")
+
+            # Python wsgi
+            elsif !Dir.glob('wsgi.py').empty? && framework != "wsgi"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "wsgi")
+
+            # .Net
+            elsif !Dir.glob('web.config').empty? && framework != "dotnet"
+              raise I18n.t('apps.controller.app_framework_detect', :frame_type => "dotnet")
+
+            # Node.js
+            elsif !Dir.glob('*.js').empty?
+              if File.exist?('server.js') || File.exist?('app.js') || File.exist?('index.js') || File.exist?('main.js')
+                if framework != "node"
+                  raise I18n.t('apps.controller.app_framework_detect', :frame_type => "node")
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  
+  def check_unreachable_links(path)
+      files = Dir.glob("#{path}/**/*", File::FNM_DOTMATCH)
+
+      pwd = Pathname.pwd
+
+      abspath = File.expand_path(path)
+      unreachable = []
+      files.each do |f|
+        file = Pathname.new(f)
+        if file.symlink? && !file.realpath.to_s.start_with?(abspath)
+          unreachable << file.relative_path_from(pwd)
+        end
+      end
+
+      unless unreachable.empty?
+        root = Pathname.new(path).relative_path_from(pwd)
+        err "Can't deploy application containing links '#{unreachable}' that reach outside its root '#{root}'"
+      end
+    end
+
+    def find_sockets(path)
+      files = Dir.glob("#{path}/**/*", File::FNM_DOTMATCH)
+      files && files.select { |f| File.socket? f }
+    end
+  #upload application file to cloudfoundry
+  def upload_app_bits2cf(appname, path, manifest)
+      logger.info 'Uploading Application:'
+      
+      upload_file, file = "#{Dir.tmpdir}/#{appname}", nil
+      Utils::FileUtilsAsync.rm_f(upload_file)
+
+      explode_dir = "#{Dir.tmpdir}/.cf_#{appname}_files"
+      Utils::FileUtilsAsync.rm_rf(explode_dir) # Make sure we didn't have anything left over..
+
+      if path.to_s =~ /\.(war|zip)$/
+        #single file that needs unpacking
+        ZipUtil.unpack(path, explode_dir)
+      elsif path.to_s =~ /\.tar.gz$/
+        Utils::CFCTAR.extract(path, explode_dir)   
+      elsif !File.directory? path
+        #single file that doesn't need unpacking
+        Utils::FileUtilsAsync.mkdir(explode_dir)
+        Utils::FileUtilsAsync.cp(path, explode_dir)
+      else
+        Dir.chdir(path) do
+          # Stage the app appropriately and do the appropriate fingerprinting, etc.
+          if war_file = Dir.glob('*.war').first
+            VMC::Cli::ZipUtil.unpack(war_file, explode_dir)
+          elsif zip_file = Dir.glob('*.zip').first
+            VMC::Cli::ZipUtil.unpack(zip_file, explode_dir)
+          else
+            check_unreachable_links(path)
+            Utils::FileUtilsAsync.mkdir(explode_dir)
+
+            files = Dir.glob('{*,.[^\.]*}')
+
+            # Do not process .git files
+            files.delete('.git') if files
+
+            Utils::FileUtilsAsync.cp_r(files, explode_dir)
+
+            find_sockets(explode_dir).each do |s|
+              File.delete s
+            end
+          end
+        end
+      end
+
+      # Send the resource list to the cloudcontroller, the response will tell us what it already has..
+      unless nil
+        logger.info '  Checking for available resources: '
+        fingerprints = []
+        total_size = 0
+        resource_files = Dir.glob("#{explode_dir}/**/*", File::FNM_DOTMATCH)
+        resource_files.each do |filename|
+          next if (File.directory?(filename) || !File.exists?(filename))
+          fingerprints << {
+            :size => File.size(filename),
+            :sha1 => Digest::SHA1.file(filename).hexdigest,
+            :fn => filename
+          }
+          total_size += File.size(filename)
+        end
+
+        # Check to see if the resource check is worth the round trip
+        if (total_size > (64*1024)) # 64k for now
+          # Send resource fingerprints to the cloud controller
+          appcloud_resources = @cf_client.check_resources(fingerprints)
+        end
+        logger.info "check_resources OK"
+
+        if appcloud_resources
+          logger.info '  Processing resources: '
+          # We can then delete what we do not need to send.
+          appcloud_resources.each do |resource|
+            Utils::FileUtilsAsync.rm_f resource[:fn]
+            # adjust filenames sans the explode_dir prefix
+            resource[:fn].sub!("#{explode_dir}/", '')
+          end
+        end
+      end
+
+      # If no resource needs to be sent, add an empty file to ensure we have
+      # a multi-part request that is expected by nginx fronting the CC.
+      #if ZipUtil.get_files_to_pack(explode_dir).empty?
+        Dir.chdir(explode_dir) do
+          Utils::FileUtilsAsync.new(".__empty__", "w")
+        end
+      #end
+      logger.info "dir #{explode_dir}"
+      # Perform Packing of the upload bits here.
+      logger.info  '  Packing application: '
+      ZipUtil.pack(explode_dir, upload_file)
+      logger.info 'Packing application complete'
+
+      upload_size = File.size(upload_file);
+      if upload_size > 1024*1024
+        upload_size  = (upload_size/(1024.0*1024.0)).round.to_s + 'M'
+      elsif upload_size > 0
+        upload_size  = (upload_size/1024.0).round.to_s + 'K'
+      else
+        upload_size = '0K'
+      end
+ 
+      logger.info "Appname: #{appname}, File: #{upload_file}"
+      
+      app = App.new(@cf_client)
+      app.upload_app_async(appname, upload_file) 
+      logger.info "Upload of #{appname} Complete"  
+      
+      
+      ensure
+        # Cleanup if we created an exploded directory.
+        Utils::FileUtilsAsync.rm_f(upload_file) if upload_file
+        Utils::FileUtilsAsync.rm_rf(explode_dir) if explode_dir
+    end
 end
+

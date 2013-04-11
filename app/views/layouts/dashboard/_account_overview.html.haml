@@ -1,0 +1,48 @@
+.item
+  %table
+    %tbody
+      %tr
+        %td{:width => "20%"}
+          = t('dashboard.account.apps')
+          = sprite_tag("help", :alt => "?", :class=> "help", :title => t('dashboard.account.apps_help_html'))
+        %td.usage
+          .bar.inuse{:title => "#{pct(@account_apps_inuse.to_f, @account_apps_total.to_f)}"}
+          .bar.unused{:title => "#{pct(@account_apps_unused.to_f, @account_apps_total.to_f)}"}
+          %table
+            %tbody
+              %tr
+                %td.inuse{:width => "30%"}=t('dashboard.account.in_use', :inuse => @account_apps_inuse)
+                %td.unused{:width => "40%"}=t('dashboard.account.unused', :unused => @account_apps_unused)
+                %td.total{:width => "30%"}=t('dashboard.account.total', :total => @account_apps_total)
+.item
+  %table
+    %tbody
+      %tr
+        %td{:width => "20%"}
+          = t('dashboard.account.memory')
+          = sprite_tag("help", :alt => "?", :class=> "help", :title => t('dashboard.account.memory_help_html'))
+        %td.usage
+          .bar.inuse{:title => "#{pct(@account_mem_inuse.to_f, @account_mem_total.to_f)}"}
+          .bar.unused{:title => "#{pct(@account_mem_unused.to_f, @account_mem_total.to_f)}"}
+          %table
+            %tbody
+              %tr
+                %td.inuse{:width => "30%"}=t('dashboard.account.in_use', :inuse => pretty_size(@account_mem_inuse * 1024 * 1024))
+                %td.unused{:width => "40%"}=t('dashboard.account.unused', :unused => pretty_size(@account_mem_unused * 1024 * 1024))
+                %td.total{:width => "30%"}=t('dashboard.account.total', :total => pretty_size(@account_mem_total * 1024 * 1024))
+.item
+  %table
+    %tbody
+      %tr
+        %td{:width => "20%"}
+          = t('dashboard.account.services')
+          = sprite_tag("help", :alt => "?", :class=> "help", :title => t('dashboard.account.services_help_html'))
+        %td.usage
+          .bar.inuse{:title => "#{pct(@account_services_inuse.to_f, @account_services_total.to_f)}"}
+          .bar.unused{:title => "#{pct(@account_services_unused.to_f, @account_services_total.to_f)}"}
+          %table
+            %tbody
+              %tr
+                %td.inuse{:width => "30%"}=t('dashboard.account.in_use', :inuse => @account_services_inuse)
+                %td.unused{:width => "40%"}=t('dashboard.account.unused', :unused => @account_services_unused)
+                %td.total{:width => "30%"}=t('dashboard.account.total', :total => @account_services_total)

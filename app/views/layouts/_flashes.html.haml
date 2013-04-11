@@ -1,5 +1,5 @@
 #flash
-  %a.close{:href => "#"}x
+  %b.close{:onclick => "hideFlash()"}x 
   #flash-content
     - flash.each do |key, value|
       .message{:class => key}

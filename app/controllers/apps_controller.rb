@@ -33,8 +33,10 @@ class AppsController < ApplicationController
     @deployform = params[:deployform]
     @gitrepo = params[:gitrepo]
     @gitbranch = params[:gitbranch]
-    localdeploy = params[:file]['file']
-    httplocation = params[:httplocation]
+    if params[:file]
+      localdeploy = params[:file]['file']
+    end
+    @httplocation = params[:httplocation]
     app_created = false
     if @name.blank?
       flash[:alert] = I18n.t('apps.controller.name_blank')
@@ -59,7 +61,7 @@ class AppsController < ApplicationController
             end
           end
         end 
-        unless !httplocation
+        unless !@httplocation
           unless request.get?
             file_path, filetype = downloadfile(@httplocation)   
           end

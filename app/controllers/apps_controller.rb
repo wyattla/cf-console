@@ -29,14 +29,16 @@ class AppsController < ApplicationController
     @memsize = params[:memsize]
     @type = params[:type]
     @url = params[:url]
+    @deployfrom = params[:deployfrom]
     @service = params[:service]
     @deployform = params[:deployform]
     @gitrepo = params[:gitrepo]
     @gitbranch = params[:gitbranch]
     if params[:file]
-      localdeploy = params[:file]['file']
-    end
+      @localdeploy = params[:file]['file']
+    end  
     @httplocation = params[:httplocation]
+    
     app_created = false
     if @name.blank?
       flash[:alert] = I18n.t('apps.controller.name_blank')
@@ -54,14 +56,14 @@ class AppsController < ApplicationController
         framework, runtime = @type.split("/")
         file_path = nil
         filetype = nil
-        unless !localdeploy
+        if @deployfrom == "local"
           unless request.get?
-            if file_path = uploadfile(localdeploy)
+            if file_path = uploadfile(@localdeploy)
                #detect_framework(file_path, framework)
             end
           end
         end 
-        unless !@httplocation
+       if @deployfrom == "http"
           unless request.get?
             file_path, filetype = downloadfile(@httplocation)   
           end

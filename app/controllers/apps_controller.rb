@@ -56,14 +56,14 @@ class AppsController < ApplicationController
         framework, runtime = @type.split("/")
         file_path = nil
         filetype = nil
-        if @deployfrom == "local"
+        if defined?(@localdeploy)
           unless request.get?
             if file_path = uploadfile(@localdeploy)
                #detect_framework(file_path, framework)
             end
           end
         end 
-       if @deployfrom == "http"
+       unless @httplocation.blank?
           unless request.get?
             file_path, filetype = downloadfile(@httplocation)   
           end
@@ -71,11 +71,14 @@ class AppsController < ApplicationController
         @url = @url.strip.gsub(/^http(s*):\/\//i, '').downcase
         app = App.new(@cf_client)
         manifestarray = app.create(@name, @instances, @memsize, @url, framework, runtime, @service)
-         #upload application file to cloudfoundry and create app in there
-        upload_app_bits2cf(@name, file_path, manifestarray) 
-        logger.info "checking app created"
-        #@new_app = [] << app.find(@name)
         flash[:notice] = I18n.t('apps.controller.app_created', :name => @name)
+         #upload application file to cloudfoundry and create app in there
+        if !@httplocation.blank? || defined?(@localdeploy)
+          upload_app_bits2cf(@name, file_path, manifestarray)
+          flash[:notice] = I18n.t('apps.controller.app_created_bits_uploaded', :name => @name)
+        end
+        logger.info "checking app created"
+        @new_app = [] << app.find(@name)        
         app_created = true
       rescue Exception => ex
         flash[:alert] = ex.message
@@ -95,7 +98,7 @@ class AppsController < ApplicationController
         end 
       end
     end
-    if !app_created
+    if app_created
       unless @gitrepo.blank?
         @gitrepo = @gitrepo.strip
         if Utils::GitUtil.git_uri_valid?(@gitrepo)

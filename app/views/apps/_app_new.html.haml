@@ -60,7 +60,7 @@
               = sprite_tag("help", :alt => "?", :class=> "help", :title => t('apps.deploy_from_help_html'))
               = label_tag "deployfrom", t('apps.deploy_from') + ":"
             %td
-              = radio_button_tag :deployfrom, 'local', true, :disabled => false, :onclick => "selectDeployWay(this.value)"
+              = radio_button_tag :deployfrom, 'local', false, :disabled => false, :onclick => "selectDeployWay(this.value)"
               = t('apps.local')
               = radio_button_tag :deployfrom, 'git', false, :disabled => false, :onclick => "selectDeployWay(this.value)"
               = t('apps.git')
